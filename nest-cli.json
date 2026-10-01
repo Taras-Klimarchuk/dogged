@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "monorepo": true,
+  "root": "apps/terminal",
+  "compilerOptions": {
+    "webpack": false,
+    "tsConfigPath": "apps/terminal/tsconfig.app.json"
+  },
+  "sourceRoot": "apps/terminal/src",
+  "projects": {
+    "terminal": {
+      "type": "application",
+      "root": "apps/terminal",
+      "entryFile": "main",
+      "sourceRoot": "apps/terminal/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/terminal/tsconfig.app.json"
+      }
+    },
+    "orders-management": {
+      "type": "application",
+      "root": "apps/orders-management",
+      "entryFile": "main",
+      "sourceRoot": "apps/orders-management/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/orders-management/tsconfig.app.json"
+      }
+    },
+    "warehouse": {
+      "type": "application",
+      "root": "apps/warehouse",
+      "entryFile": "main",
+      "sourceRoot": "apps/warehouse/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/warehouse/tsconfig.app.json"
+      }
+    },
+    "resilience": {
+      "type": "library",
+      "root": "libs/resilience",
+      "entryFile": "index",
+      "sourceRoot": "libs/resilience/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/resilience/tsconfig.lib.json"
+      }
+    }
+  }
+}
