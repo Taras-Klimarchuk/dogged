@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "../../dist/libs/resilience",
     "rootDir": "src",
-    "declaration": true
+    "declaration": true,
+    "composite": true
   }
 }

@@ -15,7 +15,8 @@
       "entryFile": "main",
       "sourceRoot": "apps/terminal/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/terminal/tsconfig.app.json"
+        "tsConfigPath": "apps/terminal/tsconfig.app.json",
+        "builder": "rspack"
       }
     },
     "orders-management": {
@@ -24,7 +25,8 @@
       "entryFile": "main",
       "sourceRoot": "apps/orders-management/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/orders-management/tsconfig.app.json"
+        "tsConfigPath": "apps/orders-management/tsconfig.app.json",
+        "builder": "rspack"
       }
     },
     "warehouse": {
@@ -33,7 +35,8 @@
       "entryFile": "main",
       "sourceRoot": "apps/warehouse/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/warehouse/tsconfig.app.json"
+        "tsConfigPath": "apps/warehouse/tsconfig.app.json",
+        "builder": "rspack"
       }
     },
     "resilience": {

@@ -3,5 +3,6 @@
   "compilerOptions": {
     "outDir": "../../dist/apps/orders-management",
     "rootDir": "src"
-  }
+  },
+  "references": [{ "path": "../../libs/resilience/tsconfig.lib.json" }]
 }
