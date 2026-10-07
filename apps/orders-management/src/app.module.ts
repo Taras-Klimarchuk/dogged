@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { OrdersModule } from './orders/orders.module.js';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { AppService } from './app.service.js';
         synchronize: true, // study project only — never do this against a real/shared database
       }),
     }),
-    // TODO(orders-management): feature modules go here, e.g. MenuModule, OrdersModule, InventoryModule
+    OrdersModule,
+    // TODO(orders-management): MenuModule, InventoryModule still pending
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -3,6 +3,7 @@ import {
   ExponentialBackoff,
   circuitBreaker,
   handleAll,
+  handleWhen,
   retry,
   timeout,
   TimeoutStrategy,
@@ -12,13 +13,16 @@ import {
 export interface RetryTimeoutPolicyOptions {
   timeoutMs?: number;
   maxAttempts?: number;
+  /** Return false for errors that should never be retried (e.g. a 4xx that will fail again). Defaults to retrying everything. */
+  isRetryable?: (error: unknown) => boolean;
 }
 
 export function createRetryTimeoutPolicy(options: RetryTimeoutPolicyOptions = {}) {
-  const { timeoutMs = 2000, maxAttempts = 3 } = options;
+  const { timeoutMs = 2000, maxAttempts = 3, isRetryable } = options;
+  const errorFilter = isRetryable ? handleWhen(isRetryable) : handleAll;
 
   const timeoutPolicy = timeout(timeoutMs, TimeoutStrategy.Aggressive);
-  const retryPolicy = retry(handleAll, {
+  const retryPolicy = retry(errorFilter, {
     maxAttempts,
     backoff: new ExponentialBackoff(),
   });
@@ -39,14 +43,16 @@ export function createRetryTimeoutBreakerPolicy(
     maxAttempts = 3,
     consecutiveFailuresToOpen = 3,
     halfOpenAfterMs = 30_000,
+    isRetryable,
   } = options;
+  const errorFilter = isRetryable ? handleWhen(isRetryable) : handleAll;
 
   const timeoutPolicy = timeout(timeoutMs, TimeoutStrategy.Aggressive);
-  const retryPolicy = retry(handleAll, {
+  const retryPolicy = retry(errorFilter, {
     maxAttempts,
     backoff: new ExponentialBackoff(),
   });
-  const breakerPolicy = circuitBreaker(handleAll, {
+  const breakerPolicy = circuitBreaker(errorFilter, {
     halfOpenAfter: halfOpenAfterMs,
     breaker: new ConsecutiveBreaker(consecutiveFailuresToOpen),
   });
