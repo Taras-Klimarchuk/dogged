@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios';
 import {
   ConsecutiveBreaker,
   ExponentialBackoff,
@@ -9,6 +10,16 @@ import {
   TimeoutStrategy,
   wrap,
 } from 'cockatiel';
+
+// A 4xx means the server rejected this specific request and will reject it
+// again on retry, so it must not be retried or count against a breaker.
+// Network errors, timeouts, and 5xx are all genuinely worth retrying.
+export function isRetryableHttpError(error: unknown): boolean {
+  if (isAxiosError(error) && error.response) {
+    return error.response.status >= 500;
+  }
+  return true;
+}
 
 export interface RetryTimeoutPolicyOptions {
   timeoutMs?: number;

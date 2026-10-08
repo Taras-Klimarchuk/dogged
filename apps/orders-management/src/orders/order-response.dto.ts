@@ -6,4 +6,13 @@ export class OrderResponseDto {
 
   @ApiProperty({ enum: ['accepted'] })
   status: 'accepted';
+
+  @ApiProperty({
+    nullable: true,
+    example: null,
+    description:
+      'Set when the terminal did not have enough stock for one or more items. ' +
+      'The order is still accepted either way.',
+  })
+  inventoryWarning: string | null;
 }

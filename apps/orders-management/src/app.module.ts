@@ -4,6 +4,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { OrdersModule } from './orders/orders.module.js';
+import { MenuModule } from './menu/menu.module.js';
+import { InitialSchema1791462826391 } from './migrations/1791462826391-InitialSchema.js';
+import { SeedMenu1791462827391 } from './migrations/1791462827391-SeedMenu.js';
+import { SeedTerminalStock1791462828391 } from './migrations/1791462828391-SeedTerminalStock.js';
+import { AddRestockPendingColumn1791462829391 } from './migrations/1791462829391-AddRestockPendingColumn.js';
 
 @Module({
   imports: [
@@ -19,11 +24,18 @@ import { OrdersModule } from './orders/orders.module.js';
         password: config.get<string>('POSTGRES_PASSWORD', 'postgres'),
         database: config.get<string>('ORDERS_DB_NAME', 'orders_management'),
         autoLoadEntities: true,
-        synchronize: true, // study project only — never do this against a real/shared database
+        synchronize: false,
+        migrations: [
+          InitialSchema1791462826391,
+          SeedMenu1791462827391,
+          SeedTerminalStock1791462828391,
+          AddRestockPendingColumn1791462829391,
+        ],
+        migrationsRun: true,
       }),
     }),
     OrdersModule,
-    // TODO(orders-management): MenuModule, InventoryModule still pending
+    MenuModule,
   ],
   controllers: [AppController],
   providers: [AppService],

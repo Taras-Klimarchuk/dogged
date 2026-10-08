@@ -1,11 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order } from './order.entity.js';
 import { CreateOrderDto } from './create-order.dto.js';
 import { OrderResponseDto } from './order-response.dto.js';
+import { StockService } from '../stock/stock.service.js';
+import { MenuService } from '../menu/menu.service.js';
+import { isUniqueViolation } from '../common/postgres-errors.js';
 
-const POSTGRES_UNIQUE_VIOLATION = '23505';
+const INVENTORY_WARNING =
+  "Order accepted, but there's an inventory issue for one or more items.";
 
 @Injectable()
 export class OrdersService {
@@ -14,6 +18,8 @@ export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly orders: Repository<Order>,
+    private readonly stock: StockService,
+    private readonly menu: MenuService,
   ) {}
 
   async placeOrder(dto: CreateOrderDto): Promise<OrderResponseDto> {
@@ -27,16 +33,32 @@ export class OrdersService {
       return this.toResponse(existing);
     }
 
+    const missingItems = await this.menu.findMissingNames(
+      dto.items.map((item) => item.name),
+    );
+    if (missingItems.length > 0) {
+      throw new BadRequestException(
+        `unknown menu item(s): ${missingItems.join(', ')}`,
+      );
+    }
+
+    const { inventoryIssue } = await this.stock.reserve(
+      dto.terminalId,
+      dto.items,
+    );
+
     try {
       const saved = await this.orders.save(
         this.orders.create({
           idempotencyKey: dto.idempotencyKey,
+          terminalId: dto.terminalId,
           items: dto.items,
+          inventoryIssue,
         }),
       );
       return this.toResponse(saved);
     } catch (error) {
-      if (!this.isUniqueViolation(error)) {
+      if (!isUniqueViolation(error)) {
         throw error;
       }
 
@@ -51,16 +73,11 @@ export class OrdersService {
     }
   }
 
-  private isUniqueViolation(error: unknown): boolean {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      (error as { driverError?: { code?: string } }).driverError?.code ===
-        POSTGRES_UNIQUE_VIOLATION
-    );
-  }
-
   private toResponse(order: Order): OrderResponseDto {
-    return { orderId: order.idempotencyKey, status: 'accepted' };
+    return {
+      orderId: order.idempotencyKey,
+      status: 'accepted',
+      inventoryWarning: order.inventoryIssue ? INVENTORY_WARNING : null,
+    };
   }
 }

@@ -14,7 +14,11 @@ function createHttpService(post: ReturnType<typeof vi.fn>): HttpService {
 }
 
 function createConfigService(): ConfigService {
-  return { get: () => 'http://orders-management:3001' } as unknown as ConfigService;
+  const values: Record<string, string> = {
+    ORDERS_MANAGEMENT_URL: 'http://orders-management:3001',
+    TERMINAL_ID: 'terminal-a',
+  };
+  return { get: (key: string) => values[key] } as unknown as ConfigService;
 }
 
 const order: CreateOrderDto = {
@@ -23,16 +27,16 @@ const order: CreateOrderDto = {
 };
 
 describe('OrdersService', () => {
-  it('returns orders-management\'s response on success', async () => {
-    const response = { orderId: 'order-1', status: 'accepted' as const };
+  it('returns orders-management\'s response on success, tagged with this terminal\'s id', async () => {
+    const response = { orderId: 'order-1', status: 'accepted' as const, inventoryWarning: null };
     const post = vi.fn().mockReturnValue(of({ data: response }));
     const service = new OrdersService(createHttpService(post), createConfigService());
 
     await expect(service.placeOrder(order)).resolves.toEqual(response);
-    expect(post).toHaveBeenCalledWith(
-      'http://orders-management:3001/orders',
-      order,
-    );
+    expect(post).toHaveBeenCalledWith('http://orders-management:3001/orders', {
+      ...order,
+      terminalId: 'terminal-a',
+    });
   });
 
   it('throws ServiceUnavailableException once retries are exhausted', async () => {

@@ -3,23 +3,16 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { isAxiosError } from 'axios';
-import { createRetryTimeoutBreakerPolicy } from '@app/resilience';
+import { createRetryTimeoutBreakerPolicy, isRetryableHttpError } from '@app/resilience';
 import { CreateOrderDto } from './create-order.dto.js';
 import { OrderResponseDto } from './order-response.dto.js';
-
-// a 4xx means orders-management rejected this specific order and will reject it
-// again on retry, so it must not be retried or count against the circuit breaker.
-function isRetryable(error: unknown): boolean {
-  if (isAxiosError(error) && error.response) {
-    return error.response.status >= 500;
-  }
-  return true;
-}
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
-  private readonly policy = createRetryTimeoutBreakerPolicy({ isRetryable });
+  private readonly policy = createRetryTimeoutBreakerPolicy({
+    isRetryable: isRetryableHttpError,
+  });
 
   constructor(
     private readonly http: HttpService,
@@ -51,8 +44,13 @@ export class OrdersService {
       'ORDERS_MANAGEMENT_URL',
       'http://localhost:3001',
     );
+    const terminalId = this.config.get<string>('TERMINAL_ID', 'terminal-dev');
     const response = await firstValueFrom(
-      this.http.post<OrderResponseDto>(`${baseUrl}/orders`, order),
+      this.http.post<OrderResponseDto>(`${baseUrl}/orders`, {
+        idempotencyKey: order.idempotencyKey,
+        items: order.items,
+        terminalId,
+      }),
     );
     return response.data;
   }

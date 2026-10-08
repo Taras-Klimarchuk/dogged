@@ -32,6 +32,14 @@ export class CreateOrderDto {
   @IsUUID()
   idempotencyKey: string;
 
+  @ApiProperty({
+    description: 'Identifies which terminal instance placed this order.',
+    example: 'terminal-a',
+  })
+  @IsString()
+  @IsNotEmpty()
+  terminalId: string;
+
   @ApiProperty({ type: [OrderItemDto] })
   @ArrayNotEmpty()
   @ValidateNested({ each: true })
