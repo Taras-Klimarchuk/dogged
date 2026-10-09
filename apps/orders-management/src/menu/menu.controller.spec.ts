@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ChaosGuard } from '@app/chaos';
 import { MenuController } from './menu.controller.js';
 import { MenuService } from './menu.service.js';
 
@@ -15,7 +16,10 @@ describe('MenuController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MenuController],
       providers: [{ provide: MenuService, useValue: menuService }],
-    }).compile();
+    })
+      .overrideGuard(ChaosGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<MenuController>(MenuController);
   });

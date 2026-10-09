@@ -4,5 +4,8 @@
     "outDir": "../../dist/apps/warehouse",
     "rootDir": "src"
   },
-  "references": [{ "path": "../../libs/resilience/tsconfig.lib.json" }]
+  "references": [
+    { "path": "../../libs/resilience/tsconfig.lib.json" },
+    { "path": "../../libs/chaos/tsconfig.lib.json" }
+  ]
 }

@@ -1,11 +1,13 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ChaosGuard } from '@app/chaos';
 import { OrdersService } from './orders.service.js';
 import { CreateOrderDto } from './create-order.dto.js';
 import { OrderResponseDto } from './order-response.dto.js';
 
 @ApiTags('orders')
 @Controller('orders')
+@UseGuards(ChaosGuard)
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 

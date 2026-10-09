@@ -1,10 +1,12 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ChaosGuard } from '@app/chaos';
 import { StockService } from './stock.service.js';
 import { RestockCallbackDto } from './restock-callback.dto.js';
 
 @ApiTags('stock')
 @Controller('stock')
+@UseGuards(ChaosGuard)
 export class StockController {
   constructor(private readonly stockService: StockService) {}
 

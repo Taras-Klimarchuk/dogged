@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ChaosGuard } from '@app/chaos';
 import { StockController } from './stock.controller.js';
 import { StockService } from './stock.service.js';
 
@@ -10,7 +11,10 @@ describe('StockController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [StockController],
       providers: [{ provide: StockService, useValue: stockService }],
-    }).compile();
+    })
+      .overrideGuard(ChaosGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<StockController>(StockController);
   });

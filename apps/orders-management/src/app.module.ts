@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ChaosModule } from '@app/chaos';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { OrdersModule } from './orders/orders.module.js';
@@ -34,6 +35,7 @@ import { AddRestockPendingColumn1791462829391 } from './migrations/1791462829391
         migrationsRun: true,
       }),
     }),
+    ChaosModule,
     OrdersModule,
     MenuModule,
   ],

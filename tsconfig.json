@@ -20,7 +20,9 @@
     "types": ["vitest/globals", "node"],
     "paths": {
       "@app/resilience": ["./libs/resilience/src/index.ts"],
-      "@app/resilience/*": ["./libs/resilience/src/*"]
+      "@app/resilience/*": ["./libs/resilience/src/*"],
+      "@app/chaos": ["./libs/chaos/src/index.ts"],
+      "@app/chaos/*": ["./libs/chaos/src/*"]
     }
   }
 }
