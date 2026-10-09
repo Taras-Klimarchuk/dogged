@@ -27,7 +27,10 @@
     "docker:down": "docker compose down",
     "migration:generate:orders-management": "typeorm-ts-node-esm migration:generate -d apps/orders-management/src/data-source.ts",
     "migration:run:orders-management": "typeorm-ts-node-esm migration:run -d apps/orders-management/src/data-source.ts",
-    "migration:revert:orders-management": "typeorm-ts-node-esm migration:revert -d apps/orders-management/src/data-source.ts"
+    "migration:revert:orders-management": "typeorm-ts-node-esm migration:revert -d apps/orders-management/src/data-source.ts",
+    "migration:generate:warehouse": "typeorm-ts-node-esm migration:generate -d apps/warehouse/src/data-source.ts",
+    "migration:run:warehouse": "typeorm-ts-node-esm migration:run -d apps/warehouse/src/data-source.ts",
+    "migration:revert:warehouse": "typeorm-ts-node-esm migration:revert -d apps/warehouse/src/data-source.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^12.0.1",

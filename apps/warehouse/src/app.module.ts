@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { DeliveriesModule } from './deliveries/deliveries.module.js';
+import { InitialSchema1791462830391 } from './migrations/1791462830391-InitialSchema.js';
 
 @Module({
   imports: [
@@ -18,10 +20,12 @@ import { AppService } from './app.service.js';
         password: config.get<string>('POSTGRES_PASSWORD', 'postgres'),
         database: config.get<string>('WAREHOUSE_DB_NAME', 'warehouse'),
         autoLoadEntities: true,
-        synchronize: true, // study project only — never do this against a real/shared database
+        synchronize: false,
+        migrations: [InitialSchema1791462830391],
+        migrationsRun: true,
       }),
     }),
-    // TODO(warehouse): feature modules go here, e.g. DeliveriesModule
+    DeliveriesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
