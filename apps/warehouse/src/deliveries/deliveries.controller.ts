@@ -1,9 +1,11 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChaosGuard } from '@app/chaos';
 import { DeliveriesService } from './deliveries.service.js';
 import { RestockRequestDto } from './restock-request.dto.js';
 import { DeliveryResponseDto } from './delivery-response.dto.js';
+import { DeliveryDetailsDto } from './delivery-details.dto.js';
+import { ListDeliveriesQueryDto } from './list-deliveries-query.dto.js';
 
 @ApiTags('deliveries')
 @Controller()
@@ -20,6 +22,16 @@ export class DeliveriesController {
   @ApiCreatedResponse({ type: DeliveryResponseDto })
   requestRestock(@Body() dto: RestockRequestDto): Promise<DeliveryResponseDto> {
     return this.deliveriesService.requestRestock(dto);
+  }
+
+  @Get('deliveries')
+  @ApiOperation({
+    summary:
+      'List deliveries, newest first. Filter with ?status=pending or ?status=delivered.',
+  })
+  @ApiOkResponse({ type: [DeliveryDetailsDto] })
+  findAll(@Query() query: ListDeliveriesQueryDto): Promise<DeliveryDetailsDto[]> {
+    return this.deliveriesService.findAll(query.status);
   }
 
   @Post('deliveries/:id/confirm')

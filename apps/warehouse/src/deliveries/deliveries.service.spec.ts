@@ -41,6 +41,61 @@ describe('DeliveriesService', () => {
     );
   });
 
+  describe('findAll()', () => {
+    const pending: Delivery = {
+      id: 'delivery-1',
+      terminalId: 'terminal-a',
+      itemName: 'Hot Dog',
+      quantity: 50,
+      delivered: false,
+      notifiedOrdersManagement: false,
+      createdAt: new Date('2026-10-10T10:00:00Z'),
+    };
+    const delivered: Delivery = {
+      ...pending,
+      id: 'delivery-2',
+      delivered: true,
+      notifiedOrdersManagement: true,
+    };
+
+    it('maps deliveries to status-bearing details, newest first, with no filter by default', async () => {
+      const find = vi.fn().mockResolvedValue([delivered, pending]);
+      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig());
+
+      const result = await service.findAll();
+
+      expect(find).toHaveBeenCalledWith({ where: {}, order: { createdAt: 'DESC' } });
+      expect(result).toEqual([
+        expect.objectContaining({ deliveryId: 'delivery-2', status: 'delivered', notifiedOrdersManagement: true }),
+        expect.objectContaining({ deliveryId: 'delivery-1', status: 'pending', notifiedOrdersManagement: false }),
+      ]);
+    });
+
+    it('filters to pending deliveries', async () => {
+      const find = vi.fn().mockResolvedValue([pending]);
+      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig());
+
+      await service.findAll('pending');
+
+      expect(find).toHaveBeenCalledWith({
+        where: { delivered: false },
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('filters to delivered deliveries', async () => {
+      const find = vi.fn().mockResolvedValue([delivered]);
+      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig());
+
+      await service.findAll('delivered');
+
+      expect(find).toHaveBeenCalledWith({
+        where: { delivered: true },
+        order: { createdAt: 'DESC' },
+      });
+    });
+  });
+
   it('confirmDelivery() throws NotFoundException for an unknown delivery', async () => {
     const repo = createRepo({ findOneBy: vi.fn().mockResolvedValue(null) });
     const service = new DeliveriesService(repo, createHttp(vi.fn()), createConfig());

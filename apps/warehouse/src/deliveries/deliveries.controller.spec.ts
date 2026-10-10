@@ -8,6 +8,7 @@ describe('DeliveriesController', () => {
   const deliveriesService = {
     requestRestock: vi.fn(),
     confirmDelivery: vi.fn(),
+    findAll: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -29,6 +30,16 @@ describe('DeliveriesController', () => {
 
     await expect(controller.requestRestock(dto)).resolves.toEqual(response);
     expect(deliveriesService.requestRestock).toHaveBeenCalledWith(dto);
+  });
+
+  it('passes the status filter through to DeliveriesService.findAll()', async () => {
+    deliveriesService.findAll.mockResolvedValue([]);
+
+    await controller.findAll({ status: 'pending' });
+    await controller.findAll({});
+
+    expect(deliveriesService.findAll).toHaveBeenNthCalledWith(1, 'pending');
+    expect(deliveriesService.findAll).toHaveBeenNthCalledWith(2, undefined);
   });
 
   it('delegates to DeliveriesService.confirmDelivery()', async () => {

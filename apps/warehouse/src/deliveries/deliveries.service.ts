@@ -8,6 +8,7 @@ import { createRetryTimeoutBreakerPolicy, isRetryableHttpError } from '@app/resi
 import { Delivery } from './delivery.entity.js';
 import { RestockRequestDto } from './restock-request.dto.js';
 import { DeliveryResponseDto } from './delivery-response.dto.js';
+import { DeliveryDetailsDto } from './delivery-details.dto.js';
 
 @Injectable()
 export class DeliveriesService {
@@ -32,6 +33,23 @@ export class DeliveriesService {
       }),
     );
     return { deliveryId: delivery.id, status: 'pending' };
+  }
+
+  async findAll(status?: 'pending' | 'delivered'): Promise<DeliveryDetailsDto[]> {
+    const deliveries = await this.deliveries.find({
+      where: status ? { delivered: status === 'delivered' } : {},
+      order: { createdAt: 'DESC' },
+    });
+
+    return deliveries.map((delivery) => ({
+      deliveryId: delivery.id,
+      terminalId: delivery.terminalId,
+      itemName: delivery.itemName,
+      quantity: delivery.quantity,
+      status: delivery.delivered ? 'delivered' : 'pending',
+      notifiedOrdersManagement: delivery.notifiedOrdersManagement,
+      createdAt: delivery.createdAt,
+    }));
   }
 
   async confirmDelivery(id: string): Promise<DeliveryResponseDto> {
