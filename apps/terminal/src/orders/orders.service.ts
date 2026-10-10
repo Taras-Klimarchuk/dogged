@@ -11,6 +11,7 @@ import { OrderResponseDto } from './order-response.dto.js';
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
   private readonly policy = createRetryTimeoutBreakerPolicy({
+    initialDelayMs: 1000,
     isRetryable: isRetryableHttpError,
   });
 

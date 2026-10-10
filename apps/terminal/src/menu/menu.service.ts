@@ -11,9 +11,12 @@ const DEFAULT_MENU: MenuItem[] = [{ name: 'Hot Dog', price: 1.99 }];
 @Injectable()
 export class MenuService {
   private readonly logger = new Logger(MenuService.name);
-  private readonly foregroundPolicy = createRetryTimeoutPolicy();
+  private readonly foregroundPolicy = createRetryTimeoutPolicy({
+    initialDelayMs: 500,
+  });
   private readonly recoveryPolicy = createRetryTimeoutPolicy({
     maxAttempts: Infinity,
+    initialDelayMs: 500,
   });
   private recovering = false;
 

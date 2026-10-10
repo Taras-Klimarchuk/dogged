@@ -17,7 +17,19 @@ function createCache(): MenuCacheService {
   return new MenuCacheService(config);
 }
 
+// well past the foreground retries' backoff, but bounded: the background
+// recovery loop retries forever, so running all timers would never finish.
+const FOREGROUND_RETRIES_MS = 10_000;
+
 describe('MenuService', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns the live menu and caches it on success', async () => {
     const items = [{ name: 'Hot Dog', price: 1.99 }];
     const get = vi.fn().mockReturnValue(of({ data: { items } }));
@@ -39,7 +51,9 @@ describe('MenuService', () => {
       .mockReturnValue(throwError(() => new Error('connection refused')));
     const service = new MenuService(createHttpService(get), createConfigService(), cache);
 
-    const result = await service.getMenu();
+    const pending = service.getMenu();
+    await vi.advanceTimersByTimeAsync(FOREGROUND_RETRIES_MS);
+    const result = await pending;
 
     expect(result).toEqual({
       items: [{ name: 'Hot Dog', price: 1.49 }],
@@ -54,7 +68,9 @@ describe('MenuService', () => {
       .mockReturnValue(throwError(() => new Error('connection refused')));
     const service = new MenuService(createHttpService(get), createConfigService(), cache);
 
-    const result = await service.getMenu();
+    const pending = service.getMenu();
+    await vi.advanceTimersByTimeAsync(FOREGROUND_RETRIES_MS);
+    const result = await pending;
 
     expect(result.source).toBe('default');
     expect(result.items.length).toBeGreaterThan(0);
@@ -75,11 +91,12 @@ describe('MenuService', () => {
 
     const service = new MenuService(createHttpService(get), createConfigService(), cache);
 
-    const result = await service.getMenu();
+    const pending = service.getMenu();
+    await vi.runAllTimersAsync();
+    const result = await pending;
     expect(result.source).toBe('default');
 
-    await vi.waitFor(() => {
-      expect(cache.getCachedMenu()?.items).toEqual(items);
-    });
+    await vi.runAllTimersAsync();
+    expect(cache.getCachedMenu()?.items).toEqual(items);
   });
 });

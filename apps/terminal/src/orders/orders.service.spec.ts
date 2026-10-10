@@ -27,6 +27,14 @@ const order: CreateOrderDto = {
 };
 
 describe('OrdersService', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns orders-management\'s response on success, tagged with this terminal\'s id', async () => {
     const response = { orderId: 'order-1', status: 'accepted' as const, inventoryWarning: null };
     const post = vi.fn().mockReturnValue(of({ data: response }));
@@ -43,20 +51,26 @@ describe('OrdersService', () => {
     const post = vi.fn().mockReturnValue(throwError(() => new Error('down')));
     const service = new OrdersService(createHttpService(post), createConfigService());
 
-    await expect(service.placeOrder(order)).rejects.toThrow(
+    const outcome = expect(service.placeOrder(order)).rejects.toThrow(
       ServiceUnavailableException,
     );
+    await vi.runAllTimersAsync();
+    await outcome;
   });
 
   it('opens the circuit after repeated failures and stops calling orders-management', async () => {
     const post = vi.fn().mockReturnValue(throwError(() => new Error('down')));
     const service = new OrdersService(createHttpService(post), createConfigService());
 
-    await expect(service.placeOrder(order)).rejects.toThrow(
+    const firstOutcome = expect(service.placeOrder(order)).rejects.toThrow(
       ServiceUnavailableException,
     );
+    await vi.runAllTimersAsync();
+    await firstOutcome;
     const callsAfterFirstOrder = post.mock.calls.length;
 
+    // no timers advanced: an open breaker must fail the request immediately
+    // instead of sleeping through the retry backoff first.
     await expect(service.placeOrder(order)).rejects.toThrow(
       ServiceUnavailableException,
     );
