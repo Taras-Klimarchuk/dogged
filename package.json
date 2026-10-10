@@ -1,7 +1,7 @@
 {
-  "name": "hotdog-resilience-lab",
+  "name": "dogged",
   "version": "0.0.1",
-  "description": "Release It! study project — hot dog vendor system (terminal, orders-management, warehouse) built with NestJS, demonstrating timeout/retry/circuit-breaker patterns",
+  "description": "Resilient multi-service NestJS system built on a hot dog vendor domain: retries, circuit breakers, idempotency and fallbacks",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

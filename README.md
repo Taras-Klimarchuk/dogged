@@ -1,19 +1,86 @@
-# Hot Dog Resilience Lab
+# Dogged
 
-A study project built while working through Michael Nygard's **Release It!** with a mentor. Models a hot dog vendor system as three NestJS services and uses it to practice the book's stability patterns — timeouts, retry with exponential backoff + jitter, circuit breakers, and fallback/cached state — against real network calls between containers, not simulations.
+A resilient multi-service system built on a hot dog vendor domain. Three NestJS services talk to each other over real HTTP inside Docker, and each call is protected by the stability patterns from Michael Nygard's *Release It!*: timeouts, retry with exponential backoff and jitter, circuit breakers, idempotency, and fallbacks. You can break the services on purpose with built-in fault injection and watch the patterns react.
+
+*Dogged*, as in persistent: it keeps going when its dependencies don't.
+
+## Contents
+
+- [Architecture](#architecture)
+- [Resilience patterns](#resilience-patterns)
+- [Running it](#running-it)
+- [See it work: a chaos walkthrough](#see-it-work-a-chaos-walkthrough)
+- [API overview](#api-overview)
+- [Design decisions](#design-decisions)
+- [Testing](#testing)
+- [Known limitations](#known-limitations)
 
 ## Architecture
 
-- **`apps/terminal`** — simulated vendor client (stand-in for what would be frontend/POS code in a real system). Fetches the menu and registers orders against `orders-management`, applying client-side retry + circuit breaker. Swagger at `/docs`.
-- **`apps/orders-management`** — shared backend: inventory, idempotent order registration, Postgres-backed. Itself wraps its outbound call to `warehouse` in the same resilience policies. Swagger at `/docs`.
-- **`apps/warehouse`** — receives delivery requests from `orders-management`, Postgres-backed. Swagger at `/docs`.
-- **`libs/resilience`** — shared [cockatiel](https://github.com/connor4312/cockatiel) retry/circuit-breaker policies, used by both `terminal` and `orders-management`.
+| Service | Role | Storage |
+|---|---|---|
+| `terminal` (`:3000`) | The vendor's cart. Serves the menu and takes orders, calling `orders-management`. In a real system this would be client or POS code. | SQLite file (local menu cache) |
+| `orders-management` (`:3001`) | The shared backend: menu catalog, idempotent orders, per-terminal stock, restock requests. | Postgres `orders_management` |
+| `warehouse` (`:3002`) | Fulfils restock requests (stock is treated as infinite) and tracks deliveries. | Postgres `warehouse` |
 
-One NestJS monorepo, one Postgres instance (two databases: `orders_management`, `warehouse`), two Docker networks:
-- `edge-net`: `terminal` ↔ `orders-management`
-- `backend-net`: `orders-management` ↔ `warehouse` ↔ `postgres`
+Shared code lives in two libraries: `libs/resilience` (retry, breaker and timeout policies built on [cockatiel](https://github.com/connor4312/cockatiel)) and `libs/chaos` (fault injection).
 
-`terminal` is **not** attached to `backend-net` — it has no network path to `warehouse` or the database, enforcing the same topology as the system's sequence diagrams at the infrastructure level, not just in application code.
+```mermaid
+flowchart LR
+    T[terminal] -- "GET /menu · POST /orders<br/>retry + timeout (+ breaker for orders)" --> O[orders-management]
+    O -- "POST /restock<br/>retry + breaker + timeout" --> W[warehouse]
+    W -- "POST /stock/restock-callback<br/>retry + breaker + timeout" --> O
+    O --- P[(Postgres)]
+    W --- P
+```
+
+### Network topology
+
+Two Docker networks enforce the topology at the infrastructure level, not just in application code:
+
+- `edge-net`: `terminal` and `orders-management`
+- `backend-net`: `orders-management`, `warehouse` and `postgres`
+
+`terminal` is not attached to `backend-net`, so it cannot even resolve the names `warehouse` or `postgres`. `orders-management` sits on both networks and is the only path between them.
+
+### A restock, end to end
+
+```mermaid
+sequenceDiagram
+    participant T as terminal
+    participant O as orders-management
+    participant W as warehouse
+    participant C as courier
+    T->>O: POST /orders (idempotencyKey, items)
+    O->>O: validate items, atomically decrement stock
+    O-->>T: 201 accepted
+    Note over O: stock fell below 30% of capacity
+    O->>W: POST /restock (retry + breaker)
+    W-->>O: 201 delivery pending
+    Note over C: delivery takes real time
+    C->>W: POST /deliveries/:id/confirm
+    W->>O: POST /stock/restock-callback (retry + breaker)
+    O->>O: quantity updated, restock flag cleared
+```
+
+## Resilience patterns
+
+Every cross-service call goes through a shared policy from `libs/resilience`. Policies stack as **retry (outer) → circuit breaker → timeout (inner)**, applied per attempt.
+
+| Call | Policy | When it fails |
+|---|---|---|
+| `terminal` → `GET /menu` | 2s timeout, 3 retries with jittered exponential backoff (scale 500ms) | Falls back to the last good menu in a local SQLite cache, then to a built-in default menu. A background loop keeps retrying and refreshes the cache once the backend returns. |
+| `terminal` → `POST /orders` | Same, scale 1000ms, plus a circuit breaker (opens after 3 consecutive failures, probes again after 30s) | Returns `503`. There is deliberately no fallback: an order can't be faked. |
+| `orders-management` → `POST /restock` | Retry + breaker + timeout, fire-and-forget | Logged, and the "restock pending" claim is released so the next low-stock check can try again. The customer's order is never affected. |
+| `warehouse` → `POST /stock/restock-callback` | Retry + breaker + timeout, fire-and-forget | Logged. The delivery stays recorded with `notifiedOrdersManagement: false`, visible via `GET /deliveries`. |
+
+Details that make the policies behave correctly:
+
+- **Only retryable errors are retried.** A `4xx` means the server rejected this specific request and would reject it again, so it is passed straight through to the caller and doesn't count against the breaker. Network errors, timeouts and `5xx` are retried (`isRetryableHttpError`).
+- **An open breaker fails fast.** Retry sits outside the breaker, so it would otherwise treat the breaker's instant rejection as retryable and sleep through its whole backoff schedule. It explicitly refuses to retry a broken circuit, so rejections take milliseconds.
+- **Backoff is tunable per call site** (`initialDelayMs`, `maxDelayMs`). Jitter spreads retries out so clients don't retry in lockstep.
+- **Idempotency.** The caller supplies an `idempotencyKey` (UUID) that is carried through every layer and used as the order's primary key, so a retried request returns the original order instead of creating a duplicate. A concurrent duplicate that loses the insert race is caught (Postgres unique violation) and resolved to the existing order.
+- **Graceful degradation.** If a terminal doesn't have enough stock, the order is still accepted and the response carries an `inventoryWarning`.
 
 ## Running it
 
@@ -22,21 +89,79 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Migrations run automatically on boot and seed the menu plus stock for the terminals listed in `KNOWN_TERMINAL_IDS`.
+
 - Terminal: http://localhost:3000/docs
 - Orders Management: http://localhost:3001/docs
 - Warehouse: http://localhost:3002/docs
 
-## Local development (without Docker)
+Every service exposes Swagger at `/docs`. An importable Postman collection is in [`postman/dogged.postman_collection.json`](postman/dogged.postman_collection.json) (it uses `{{$guid}}` for idempotency keys).
+
+### Without Docker
 
 ```bash
 npm install
-npm run start:terminal:dev            # apps/terminal, no DB required
-npm run start:orders-management:dev   # needs Postgres reachable at POSTGRES_HOST
-npm run start:warehouse:dev           # needs Postgres reachable at POSTGRES_HOST
+npm run start:terminal:dev
+npm run start:orders-management:dev   # needs Postgres
+npm run start:warehouse:dev           # needs Postgres
 ```
 
-Other scripts: `npm test` (unit, vitest), `npm run test:e2e` (e2e — orders-management/warehouse need a live Postgres, e.g. via `docker compose up postgres`), `npm run lint` (oxlint), `npm run build:all`.
+Outside Docker, override `POSTGRES_HOST=localhost` and point `ORDERS_MANAGEMENT_URL` / `WAREHOUSE_URL` at `http://localhost:<port>`.
 
-## Status
+## See it work: a chaos walkthrough
 
-Infrastructure scaffold only: Nest monorepo, Docker/Compose, Swagger, TypeORM + Postgres wiring, and network topology are in place and verified end-to-end. Not yet implemented: menu/inventory/order domain logic, the `/admin/chaos` fault-injection endpoints, and the actual retry/circuit-breaker policies in `libs/resilience` — those are being built next, module by module.
+`orders-management` and `warehouse` each expose `POST /admin/chaos`, which makes their business endpoints fail or slow down on demand. The chaos endpoint itself and the health checks are never affected.
+
+```bash
+# 1. Make orders-management fail every request
+curl -X POST localhost:3001/admin/chaos -H 'Content-Type: application/json' \
+  -d '{"enabled":true,"mode":"error","failureRate":1}'
+
+# 2. The menu degrades gracefully: served from the local cache after retries
+curl localhost:3000/menu                 # "source": "cache"
+
+# 3. Orders fail after retries; the breaker then opens...
+curl -X POST localhost:3000/orders -H 'Content-Type: application/json' \
+  -d '{"idempotencyKey":"'$(uuidgen)'","items":[{"name":"Hot Dog","quantity":1}]}'   # 503 after a few seconds
+
+# 4. ...and further orders are rejected in milliseconds, not seconds
+# 5. Turn chaos off; after the 30s half-open window the breaker closes again
+curl -X POST localhost:3001/admin/chaos -H 'Content-Type: application/json' -d '{"enabled":false}'
+```
+
+Modes: `error` (fails a `failureRate` fraction of requests with `503`) and `delay` (adds `delayMs` to every request, to exercise timeouts).
+
+## API overview
+
+**terminal**: `GET /menu`, `POST /orders`
+
+**orders-management**: `GET/POST /menu`, `GET/DELETE /menu/:id`, `POST /orders`, `POST /stock/restock-callback`, `GET/POST /admin/chaos`
+
+**warehouse**: `POST /restock`, `GET /deliveries?status=pending|delivered`, `POST /deliveries/:id/confirm`, `GET/POST /admin/chaos`
+
+## Design decisions
+
+- **Atomic stock decrement.** Stock is decremented with a single SQL statement (a CTE that captures the pre-decrement quantity alongside the `UPDATE`), not read-then-write. Postgres locks the row for the statement, so concurrent orders can't lose an update and no retry loop is needed.
+- **Restock is a request and a callback, not an RPC.** A delivery takes real time, so the restock request returns immediately and the new quantity arrives later via the callback.
+- **The "restock already requested" flag lives in Postgres**, claimed with an atomic `UPDATE ... WHERE restockPending = false`. An in-memory flag would be per-process and break with more than one `orders-management` instance.
+- **Terminals are provisioned up front, not auto-created.** Known terminal ids come from the shared `KNOWN_TERMINAL_IDS` env var and are seeded by a migration. An unknown terminal gets a `404` rather than silently acquiring stock.
+- **Real migrations, not `synchronize`.** Schema and seed data are versioned TypeORM migrations that run on boot.
+- **Bundled builds.** Apps are built with rspack so the `@app/*` library aliases resolve correctly in the compiled output and the Docker images.
+
+## Testing
+
+```bash
+npm test          # unit tests (vitest)
+npm run lint      # oxlint
+npm run build:all
+```
+
+Specs that exercise the real retry and breaker policies use fake timers, so the suite runs in a couple of seconds despite multi-second backoffs.
+
+## Known limitations
+
+- **Resilience state is per instance.** Breaker state and chaos settings are in memory, so with several replicas each one has its own.
+- **No reconciliation job.** If a delivery's callback to `orders-management` ultimately fails, it is logged and flagged (`notifiedOrdersManagement: false`) but not retried later.
+- **Order creation and stock reservation aren't one transaction.** In the rare case of two simultaneous requests with the same `idempotencyKey`, the order is created once but stock could be decremented twice.
+- **One terminal service in Compose.** The data model supports several terminals (`KNOWN_TERMINAL_IDS`), but `docker-compose.yml` runs a single one.
+- **The generated e2e specs are placeholders** and are not part of the passing suite.

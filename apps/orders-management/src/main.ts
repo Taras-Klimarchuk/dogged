@@ -11,7 +11,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Orders Management API')
+    .setTitle('Dogged · Orders Management API')
     .setDescription(
       'Shared backend for the hot dog vendor system — inventory, idempotent order registration, and delivery requests to warehouse.',
     )

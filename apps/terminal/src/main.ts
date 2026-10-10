@@ -11,7 +11,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Terminal API')
+    .setTitle('Dogged · Terminal API')
     .setDescription(
       'Simulated hot dog vendor terminal — fetches the menu and registers orders against orders-management, applying client-side retry and circuit breaker resilience.',
     )

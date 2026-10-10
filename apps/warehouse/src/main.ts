@@ -11,7 +11,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Warehouse API')
+    .setTitle('Dogged · Warehouse API')
     .setDescription(
       'Receives delivery requests from orders-management for the hot dog vendor system.',
     )
