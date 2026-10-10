@@ -10,8 +10,6 @@ A resilient multi-service system built on a hot dog vendor domain. Three NestJS 
 - [Resilience patterns](#resilience-patterns)
 - [Running it](#running-it)
 - [See it work: a chaos walkthrough](#see-it-work-a-chaos-walkthrough)
-- [API overview](#api-overview)
-- [Design decisions](#design-decisions)
 - [Testing](#testing)
 - [Known limitations](#known-limitations)
 
@@ -19,7 +17,7 @@ A resilient multi-service system built on a hot dog vendor domain. Three NestJS 
 
 | Service | Role | Storage |
 |---|---|---|
-| `terminal` (`:3000`) | The vendor's cart. Serves the menu and takes orders, calling `orders-management`. In a real system this would be client or POS code. | SQLite file (local menu cache) |
+| `terminal` (`:3000`) | The vendor's cart. Serves the menu and takes orders, calling `orders-management`. In a real system this would be client. | SQLite file (local menu cache) |
 | `orders-management` (`:3001`) | The shared backend: menu catalog, idempotent orders, per-terminal stock, restock requests. | Postgres `orders_management` |
 | `warehouse` (`:3002`) | Fulfils restock requests (stock is treated as infinite) and tracks deliveries. | Postgres `warehouse` |
 
@@ -131,23 +129,6 @@ curl -X POST localhost:3001/admin/chaos -H 'Content-Type: application/json' -d '
 
 Modes: `error` (fails a `failureRate` fraction of requests with `503`) and `delay` (adds `delayMs` to every request, to exercise timeouts).
 
-## API overview
-
-**terminal**: `GET /menu`, `POST /orders`
-
-**orders-management**: `GET/POST /menu`, `GET/DELETE /menu/:id`, `POST /orders`, `POST /stock/restock-callback`, `GET/POST /admin/chaos`
-
-**warehouse**: `POST /restock`, `GET /deliveries?status=pending|delivered`, `POST /deliveries/:id/confirm`, `GET/POST /admin/chaos`
-
-## Design decisions
-
-- **Atomic stock decrement.** Stock is decremented with a single SQL statement (a CTE that captures the pre-decrement quantity alongside the `UPDATE`), not read-then-write. Postgres locks the row for the statement, so concurrent orders can't lose an update and no retry loop is needed.
-- **Restock is a request and a callback, not an RPC.** A delivery takes real time, so the restock request returns immediately and the new quantity arrives later via the callback.
-- **The "restock already requested" flag lives in Postgres**, claimed with an atomic `UPDATE ... WHERE restockPending = false`. An in-memory flag would be per-process and break with more than one `orders-management` instance.
-- **Terminals are provisioned up front, not auto-created.** Known terminal ids come from the shared `KNOWN_TERMINAL_IDS` env var and are seeded by a migration. An unknown terminal gets a `404` rather than silently acquiring stock.
-- **Real migrations, not `synchronize`.** Schema and seed data are versioned TypeORM migrations that run on boot.
-- **Bundled builds.** Apps are built with rspack so the `@app/*` library aliases resolve correctly in the compiled output and the Docker images.
-
 ## Testing
 
 ```bash
@@ -162,6 +143,5 @@ Specs that exercise the real retry and breaker policies use fake timers, so the 
 
 - **Resilience state is per instance.** Breaker state and chaos settings are in memory, so with several replicas each one has its own.
 - **No reconciliation job.** If a delivery's callback to `orders-management` ultimately fails, it is logged and flagged (`notifiedOrdersManagement: false`) but not retried later.
-- **Order creation and stock reservation aren't one transaction.** In the rare case of two simultaneous requests with the same `idempotencyKey`, the order is created once but stock could be decremented twice.
 - **One terminal service in Compose.** The data model supports several terminals (`KNOWN_TERMINAL_IDS`), but `docker-compose.yml` runs a single one.
 - **The generated e2e specs are placeholders** and are not part of the passing suite.
