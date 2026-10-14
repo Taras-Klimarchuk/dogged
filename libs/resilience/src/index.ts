@@ -1,6 +1,7 @@
 import { isAxiosError } from 'axios';
 import {
   BrokenCircuitError,
+  CircuitState,
   ConsecutiveBreaker,
   ExponentialBackoff,
   circuitBreaker,
@@ -22,7 +23,30 @@ export function isRetryableHttpError(error: unknown): boolean {
   return true;
 }
 
-export interface RetryTimeoutPolicyOptions {
+export type BreakerState = 'closed' | 'half-open' | 'open' | 'isolated';
+
+const BREAKER_STATES: Record<CircuitState, BreakerState> = {
+  [CircuitState.Closed]: 'closed',
+  [CircuitState.HalfOpen]: 'half-open',
+  [CircuitState.Open]: 'open',
+  [CircuitState.Isolated]: 'isolated',
+};
+
+// Observation points, so callers can record metrics without this library
+// depending on any metrics code.
+export interface RetryHooks {
+  /** Called each time a failed attempt is about to be retried. */
+  onRetry?: () => void;
+  /** Called when the last attempt failed and no retries are left. */
+  onGiveUp?: () => void;
+}
+
+export interface BreakerHooks extends RetryHooks {
+  /** Called with the initial state on creation and on every state change. */
+  onBreakerStateChange?: (state: BreakerState) => void;
+}
+
+export interface RetryTimeoutPolicyOptions extends RetryHooks {
   timeoutMs?: number;
   maxAttempts?: number;
   initialDelayMs?: number;
@@ -31,13 +55,17 @@ export interface RetryTimeoutPolicyOptions {
   isRetryable?: (error: unknown) => boolean;
 }
 
-export function createRetryTimeoutPolicy(options: RetryTimeoutPolicyOptions = {}) {
+export function createRetryTimeoutPolicy(
+  options: RetryTimeoutPolicyOptions = {},
+) {
   const {
     timeoutMs = 2000,
     maxAttempts = 3,
     initialDelayMs = 128,
     maxDelayMs = 30_000,
     isRetryable,
+    onRetry,
+    onGiveUp,
   } = options;
   const errorFilter = isRetryable ? handleWhen(isRetryable) : handleAll;
 
@@ -49,11 +77,14 @@ export function createRetryTimeoutPolicy(options: RetryTimeoutPolicyOptions = {}
       maxDelay: maxDelayMs,
     }),
   });
+  if (onRetry) retryPolicy.onRetry(() => onRetry());
+  if (onGiveUp) retryPolicy.onGiveUp(() => onGiveUp());
 
   return wrap(retryPolicy, timeoutPolicy);
 }
 
-export interface RetryTimeoutBreakerPolicyOptions extends RetryTimeoutPolicyOptions {
+export interface RetryTimeoutBreakerPolicyOptions
+  extends RetryTimeoutPolicyOptions, BreakerHooks {
   consecutiveFailuresToOpen?: number;
   halfOpenAfterMs?: number;
 }
@@ -69,6 +100,9 @@ export function createRetryTimeoutBreakerPolicy(
     consecutiveFailuresToOpen = 3,
     halfOpenAfterMs = 30_000,
     isRetryable,
+    onRetry,
+    onGiveUp,
+    onBreakerStateChange,
   } = options;
   const errorFilter = isRetryable ? handleWhen(isRetryable) : handleAll;
   // An open breaker rejects instantly; retrying that would only sleep through
@@ -90,6 +124,14 @@ export function createRetryTimeoutBreakerPolicy(
     halfOpenAfter: halfOpenAfterMs,
     breaker: new ConsecutiveBreaker(consecutiveFailuresToOpen),
   });
+  if (onRetry) retryPolicy.onRetry(() => onRetry());
+  if (onGiveUp) retryPolicy.onGiveUp(() => onGiveUp());
+  if (onBreakerStateChange) {
+    onBreakerStateChange(BREAKER_STATES[breakerPolicy.state]);
+    breakerPolicy.onStateChange((state) =>
+      onBreakerStateChange(BREAKER_STATES[state]),
+    );
+  }
 
   // retry (outer) -> circuit breaker -> timeout (inner), per attempt.
   return wrap(retryPolicy, breakerPolicy, timeoutPolicy);
