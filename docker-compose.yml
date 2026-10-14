@@ -65,6 +65,24 @@ services:
     networks:
       - edge-net
 
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - terminal
+      - orders-management
+      - warehouse
+    ports:
+      - '9090:9090'
+    # Attached to both networks only so it can scrape every service; the services
+    # themselves still share no network with each other beyond the original links.
+    networks:
+      - edge-net
+      - backend-net
+
 networks:
   # terminal <-> orders-management only
   edge-net:
@@ -74,3 +92,4 @@ networks:
 
 volumes:
   postgres-data:
+  prometheus-data:

@@ -1,0 +1,18 @@
+global:
+  # how often Prometheus pulls GET /metrics from every target
+  scrape_interval: 15s
+
+# Targets are addressed by docker compose service name + the container port
+# (not the host-published one): Prometheus reaches them over the docker networks.
+scrape_configs:
+  - job_name: terminal
+    static_configs:
+      - targets: ['terminal:3000']
+
+  - job_name: orders-management
+    static_configs:
+      - targets: ['orders-management:3001']
+
+  - job_name: warehouse
+    static_configs:
+      - targets: ['warehouse:3002']
