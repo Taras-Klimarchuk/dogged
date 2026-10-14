@@ -1,3 +1,5 @@
+import { Registry } from '@prometheus-io/client';
+import { ResilienceMetrics } from '@app/metrics';
 import type { Repository } from 'typeorm';
 import type { HttpService } from '@nestjs/axios';
 import type { ConfigService } from '@nestjs/config';
@@ -5,6 +7,8 @@ import { NotFoundException } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
 import { StockService } from './stock.service.js';
 import type { TerminalStock } from './terminal-stock.entity.js';
+
+const metrics = new ResilienceMetrics(new Registry());
 
 function createStockRepo(
   overrides: Partial<Repository<TerminalStock>> = {},
@@ -29,7 +33,7 @@ describe('StockService', () => {
     const query = vi.fn().mockResolvedValue([{ quantity: 45, capacity: 50, wasInsufficient: false }]);
     const stockRepo = createStockRepo({ query });
     const post = vi.fn().mockReturnValue(of({}));
-    const service = new StockService(stockRepo, createHttp(post), createConfig());
+    const service = new StockService(stockRepo, createHttp(post), createConfig(), metrics);
 
     const result = await service.reserve('terminal-a', [{ name: 'Hot Dog', quantity: 5 }]);
 
@@ -41,7 +45,7 @@ describe('StockService', () => {
     const query = vi.fn().mockResolvedValue([{ quantity: 0, capacity: 50, wasInsufficient: true }]);
     const stockRepo = createStockRepo({ query });
     const post = vi.fn().mockReturnValue(of({}));
-    const service = new StockService(stockRepo, createHttp(post), createConfig());
+    const service = new StockService(stockRepo, createHttp(post), createConfig(), metrics);
 
     const result = await service.reserve('terminal-a', [{ name: 'Hot Dog', quantity: 5 }]);
 
@@ -52,7 +56,7 @@ describe('StockService', () => {
     const query = vi.fn().mockResolvedValue([]);
     const stockRepo = createStockRepo({ query });
     const post = vi.fn().mockReturnValue(of({}));
-    const service = new StockService(stockRepo, createHttp(post), createConfig());
+    const service = new StockService(stockRepo, createHttp(post), createConfig(), metrics);
 
     await expect(
       service.reserve('unknown-terminal', [{ name: 'Hot Dog', quantity: 1 }]),
@@ -64,7 +68,7 @@ describe('StockService', () => {
     const update = vi.fn().mockResolvedValue({ affected: 1 });
     const stockRepo = createStockRepo({ query, update });
     const post = vi.fn().mockReturnValue(of({}));
-    const service = new StockService(stockRepo, createHttp(post), createConfig());
+    const service = new StockService(stockRepo, createHttp(post), createConfig(), metrics);
 
     await service.reserve('terminal-a', [{ name: 'Hot Dog', quantity: 10 }]);
 
@@ -85,7 +89,7 @@ describe('StockService', () => {
     const update = vi.fn().mockResolvedValue({ affected: 0 });
     const stockRepo = createStockRepo({ query, update });
     const post = vi.fn().mockReturnValue(of({}));
-    const service = new StockService(stockRepo, createHttp(post), createConfig());
+    const service = new StockService(stockRepo, createHttp(post), createConfig(), metrics);
 
     await service.reserve('terminal-a', [{ name: 'Hot Dog', quantity: 10 }]);
 
@@ -97,7 +101,7 @@ describe('StockService', () => {
     const update = vi.fn().mockResolvedValue({ affected: 1 });
     const stockRepo = createStockRepo({ query, update });
     const post = vi.fn().mockReturnValue(throwError(() => new Error('warehouse down')));
-    const service = new StockService(stockRepo, createHttp(post), createConfig());
+    const service = new StockService(stockRepo, createHttp(post), createConfig(), metrics);
 
     await expect(
       service.reserve('terminal-a', [{ name: 'Hot Dog', quantity: 1 }]),
@@ -113,7 +117,7 @@ describe('StockService', () => {
 
   it('completeRestock() sets the delivered quantity and clears the pending flag', async () => {
     const stockRepo = createStockRepo();
-    const service = new StockService(stockRepo, createHttp(vi.fn()), createConfig());
+    const service = new StockService(stockRepo, createHttp(vi.fn()), createConfig(), metrics);
 
     await service.completeRestock('terminal-a', 'Hot Dog', 50);
 

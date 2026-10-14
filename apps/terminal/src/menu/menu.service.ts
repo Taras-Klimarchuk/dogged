@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { createRetryTimeoutPolicy } from '@app/resilience';
+import { ResilienceMetrics } from '@app/metrics';
 import { MenuCacheService, MenuItem } from './menu-cache.service.js';
 import { MenuResponseDto } from './menu-response.dto.js';
 
@@ -11,20 +12,26 @@ const DEFAULT_MENU: MenuItem[] = [{ name: 'Hot Dog', price: 1.99 }];
 @Injectable()
 export class MenuService {
   private readonly logger = new Logger(MenuService.name);
-  private readonly foregroundPolicy = createRetryTimeoutPolicy({
-    initialDelayMs: 500,
-  });
-  private readonly recoveryPolicy = createRetryTimeoutPolicy({
-    maxAttempts: Infinity,
-    initialDelayMs: 500,
-  });
+  private readonly foregroundPolicy: ReturnType<typeof createRetryTimeoutPolicy>;
+  private readonly recoveryPolicy: ReturnType<typeof createRetryTimeoutPolicy>;
   private recovering = false;
 
   constructor(
     private readonly http: HttpService,
     private readonly config: ConfigService,
     private readonly cache: MenuCacheService,
-  ) {}
+    metrics: ResilienceMetrics,
+  ) {
+    this.foregroundPolicy = createRetryTimeoutPolicy({
+      initialDelayMs: 500,
+      ...metrics.retryHooks('orders-management-menu'),
+    });
+    this.recoveryPolicy = createRetryTimeoutPolicy({
+      maxAttempts: Infinity,
+      initialDelayMs: 500,
+      ...metrics.retryHooks('orders-management-menu-recovery'),
+    });
+  }
 
   async getMenu(): Promise<MenuResponseDto> {
     try {

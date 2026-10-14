@@ -1,9 +1,13 @@
+import { Registry } from '@prometheus-io/client';
+import { ResilienceMetrics } from '@app/metrics';
 import type { ConfigService } from '@nestjs/config';
 import type { HttpService } from '@nestjs/axios';
 import { HttpException, ServiceUnavailableException } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
 import { OrdersService } from './orders.service.js';
 import type { CreateOrderDto } from './create-order.dto.js';
+
+const metrics = new ResilienceMetrics(new Registry());
 
 function createAxiosError(status: number, data: unknown) {
   return { isAxiosError: true, response: { status, data } };
@@ -38,7 +42,7 @@ describe('OrdersService', () => {
   it('returns orders-management\'s response on success, tagged with this terminal\'s id', async () => {
     const response = { orderId: 'order-1', status: 'accepted' as const, inventoryWarning: null };
     const post = vi.fn().mockReturnValue(of({ data: response }));
-    const service = new OrdersService(createHttpService(post), createConfigService());
+    const service = new OrdersService(createHttpService(post), createConfigService(), metrics);
 
     await expect(service.placeOrder(order)).resolves.toEqual(response);
     expect(post).toHaveBeenCalledWith('http://orders-management:3001/orders', {
@@ -49,7 +53,7 @@ describe('OrdersService', () => {
 
   it('throws ServiceUnavailableException once retries are exhausted', async () => {
     const post = vi.fn().mockReturnValue(throwError(() => new Error('down')));
-    const service = new OrdersService(createHttpService(post), createConfigService());
+    const service = new OrdersService(createHttpService(post), createConfigService(), metrics);
 
     const outcome = expect(service.placeOrder(order)).rejects.toThrow(
       ServiceUnavailableException,
@@ -60,7 +64,7 @@ describe('OrdersService', () => {
 
   it('opens the circuit after repeated failures and stops calling orders-management', async () => {
     const post = vi.fn().mockReturnValue(throwError(() => new Error('down')));
-    const service = new OrdersService(createHttpService(post), createConfigService());
+    const service = new OrdersService(createHttpService(post), createConfigService(), metrics);
 
     const firstOutcome = expect(service.placeOrder(order)).rejects.toThrow(
       ServiceUnavailableException,
@@ -83,7 +87,7 @@ describe('OrdersService', () => {
   it('propagates a 4xx rejection as-is without retrying', async () => {
     const axiosError = createAxiosError(400, { message: 'invalid item' });
     const post = vi.fn().mockReturnValue(throwError(() => axiosError));
-    const service = new OrdersService(createHttpService(post), createConfigService());
+    const service = new OrdersService(createHttpService(post), createConfigService(), metrics);
 
     await expect(service.placeOrder(order)).rejects.toMatchObject(
       new HttpException({ message: 'invalid item' }, 400),
@@ -94,7 +98,7 @@ describe('OrdersService', () => {
   it('does not open the circuit on repeated 4xx rejections', async () => {
     const axiosError = createAxiosError(400, { message: 'invalid item' });
     const post = vi.fn().mockReturnValue(throwError(() => axiosError));
-    const service = new OrdersService(createHttpService(post), createConfigService());
+    const service = new OrdersService(createHttpService(post), createConfigService(), metrics);
 
     await expect(service.placeOrder(order)).rejects.toBeInstanceOf(HttpException);
     await expect(service.placeOrder(order)).rejects.toBeInstanceOf(HttpException);

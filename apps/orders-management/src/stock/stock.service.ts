@@ -5,6 +5,7 @@ import { HttpService } from '@nestjs/axios';
 import { Repository } from 'typeorm';
 import { firstValueFrom } from 'rxjs';
 import { createRetryTimeoutBreakerPolicy, isRetryableHttpError } from '@app/resilience';
+import { ResilienceMetrics } from '@app/metrics';
 import { TerminalStock } from './terminal-stock.entity.js';
 import type { OrderItem } from '../orders/order.entity.js';
 
@@ -24,16 +25,20 @@ interface DecrementRow {
 @Injectable()
 export class StockService {
   private readonly logger = new Logger(StockService.name);
-  private readonly policy = createRetryTimeoutBreakerPolicy({
-    isRetryable: isRetryableHttpError,
-  });
+  private readonly policy: ReturnType<typeof createRetryTimeoutBreakerPolicy>;
 
   constructor(
     @InjectRepository(TerminalStock)
     private readonly stock: Repository<TerminalStock>,
     private readonly http: HttpService,
     private readonly config: ConfigService,
-  ) {}
+    metrics: ResilienceMetrics,
+  ) {
+    this.policy = createRetryTimeoutBreakerPolicy({
+      isRetryable: isRetryableHttpError,
+      ...metrics.breakerHooks('warehouse-restock'),
+    });
+  }
 
   async reserve(terminalId: string, items: OrderItem[]): Promise<ReserveResult> {
     let inventoryIssue = false;

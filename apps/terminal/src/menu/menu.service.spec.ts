@@ -1,8 +1,12 @@
+import { Registry } from '@prometheus-io/client';
+import { ResilienceMetrics } from '@app/metrics';
 import type { ConfigService } from '@nestjs/config';
 import type { HttpService } from '@nestjs/axios';
 import { of, throwError } from 'rxjs';
 import { MenuService } from './menu.service.js';
 import { MenuCacheService } from './menu-cache.service.js';
+
+const metrics = new ResilienceMetrics(new Registry());
 
 function createHttpService(get: ReturnType<typeof vi.fn>): HttpService {
   return { get } as unknown as HttpService;
@@ -34,7 +38,7 @@ describe('MenuService', () => {
     const items = [{ name: 'Hot Dog', price: 1.99 }];
     const get = vi.fn().mockReturnValue(of({ data: { items } }));
     const cache = createCache();
-    const service = new MenuService(createHttpService(get), createConfigService(), cache);
+    const service = new MenuService(createHttpService(get), createConfigService(), cache, metrics);
 
     const result = await service.getMenu();
 
@@ -49,7 +53,7 @@ describe('MenuService', () => {
     const get = vi
       .fn()
       .mockReturnValue(throwError(() => new Error('connection refused')));
-    const service = new MenuService(createHttpService(get), createConfigService(), cache);
+    const service = new MenuService(createHttpService(get), createConfigService(), cache, metrics);
 
     const pending = service.getMenu();
     await vi.advanceTimersByTimeAsync(FOREGROUND_RETRIES_MS);
@@ -66,7 +70,7 @@ describe('MenuService', () => {
     const get = vi
       .fn()
       .mockReturnValue(throwError(() => new Error('connection refused')));
-    const service = new MenuService(createHttpService(get), createConfigService(), cache);
+    const service = new MenuService(createHttpService(get), createConfigService(), cache, metrics);
 
     const pending = service.getMenu();
     await vi.advanceTimersByTimeAsync(FOREGROUND_RETRIES_MS);
@@ -89,7 +93,7 @@ describe('MenuService', () => {
       .mockReturnValueOnce(throwError(() => new Error('down 4')))
       .mockReturnValue(of({ data: { items } }));
 
-    const service = new MenuService(createHttpService(get), createConfigService(), cache);
+    const service = new MenuService(createHttpService(get), createConfigService(), cache, metrics);
 
     const pending = service.getMenu();
     await vi.runAllTimersAsync();

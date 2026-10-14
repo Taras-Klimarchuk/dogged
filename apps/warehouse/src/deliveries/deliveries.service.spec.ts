@@ -1,3 +1,5 @@
+import { Registry } from '@prometheus-io/client';
+import { ResilienceMetrics } from '@app/metrics';
 import type { Repository } from 'typeorm';
 import type { HttpService } from '@nestjs/axios';
 import type { ConfigService } from '@nestjs/config';
@@ -5,6 +7,8 @@ import { NotFoundException } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
 import { DeliveriesService } from './deliveries.service.js';
 import type { Delivery } from './delivery.entity.js';
+
+const metrics = new ResilienceMetrics(new Registry());
 
 function createRepo(overrides: Partial<Repository<Delivery>> = {}): Repository<Delivery> {
   return {
@@ -27,7 +31,7 @@ function createConfig(): ConfigService {
 describe('DeliveriesService', () => {
   it('requestRestock() ships the full amount asked for and returns a pending delivery', async () => {
     const repo = createRepo();
-    const service = new DeliveriesService(repo, createHttp(vi.fn()), createConfig());
+    const service = new DeliveriesService(repo, createHttp(vi.fn()), createConfig(), metrics);
 
     const result = await service.requestRestock({
       terminalId: 'terminal-a',
@@ -60,7 +64,7 @@ describe('DeliveriesService', () => {
 
     it('maps deliveries to status-bearing details, newest first, with no filter by default', async () => {
       const find = vi.fn().mockResolvedValue([delivered, pending]);
-      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig());
+      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig(), metrics);
 
       const result = await service.findAll();
 
@@ -73,7 +77,7 @@ describe('DeliveriesService', () => {
 
     it('filters to pending deliveries', async () => {
       const find = vi.fn().mockResolvedValue([pending]);
-      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig());
+      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig(), metrics);
 
       await service.findAll('pending');
 
@@ -85,7 +89,7 @@ describe('DeliveriesService', () => {
 
     it('filters to delivered deliveries', async () => {
       const find = vi.fn().mockResolvedValue([delivered]);
-      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig());
+      const service = new DeliveriesService(createRepo({ find }), createHttp(vi.fn()), createConfig(), metrics);
 
       await service.findAll('delivered');
 
@@ -98,7 +102,7 @@ describe('DeliveriesService', () => {
 
   it('confirmDelivery() throws NotFoundException for an unknown delivery', async () => {
     const repo = createRepo({ findOneBy: vi.fn().mockResolvedValue(null) });
-    const service = new DeliveriesService(repo, createHttp(vi.fn()), createConfig());
+    const service = new DeliveriesService(repo, createHttp(vi.fn()), createConfig(), metrics);
 
     await expect(service.confirmDelivery('missing')).rejects.toThrow(NotFoundException);
   });
@@ -117,7 +121,7 @@ describe('DeliveriesService', () => {
     const update = vi.fn().mockResolvedValue({ affected: 1 });
     const repo = createRepo({ findOneBy, update });
     const post = vi.fn().mockReturnValue(of({}));
-    const service = new DeliveriesService(repo, createHttp(post), createConfig());
+    const service = new DeliveriesService(repo, createHttp(post), createConfig(), metrics);
 
     const result = await service.confirmDelivery('delivery-1');
 
@@ -150,7 +154,7 @@ describe('DeliveriesService', () => {
     const findOneBy = vi.fn().mockResolvedValue(delivery);
     const post = vi.fn();
     const repo = createRepo({ findOneBy });
-    const service = new DeliveriesService(repo, createHttp(post), createConfig());
+    const service = new DeliveriesService(repo, createHttp(post), createConfig(), metrics);
 
     const result = await service.confirmDelivery('delivery-1');
 
@@ -172,7 +176,7 @@ describe('DeliveriesService', () => {
     const update = vi.fn();
     const repo = createRepo({ findOneBy, update });
     const post = vi.fn().mockReturnValue(throwError(() => new Error('orders-management down')));
-    const service = new DeliveriesService(repo, createHttp(post), createConfig());
+    const service = new DeliveriesService(repo, createHttp(post), createConfig(), metrics);
 
     await expect(service.confirmDelivery('delivery-1')).resolves.toEqual({
       deliveryId: 'delivery-1',

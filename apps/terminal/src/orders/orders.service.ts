@@ -4,21 +4,26 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { isAxiosError } from 'axios';
 import { createRetryTimeoutBreakerPolicy, isRetryableHttpError } from '@app/resilience';
+import { ResilienceMetrics } from '@app/metrics';
 import { CreateOrderDto } from './create-order.dto.js';
 import { OrderResponseDto } from './order-response.dto.js';
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
-  private readonly policy = createRetryTimeoutBreakerPolicy({
-    initialDelayMs: 1000,
-    isRetryable: isRetryableHttpError,
-  });
+  private readonly policy: ReturnType<typeof createRetryTimeoutBreakerPolicy>;
 
   constructor(
     private readonly http: HttpService,
     private readonly config: ConfigService,
-  ) {}
+    metrics: ResilienceMetrics,
+  ) {
+    this.policy = createRetryTimeoutBreakerPolicy({
+      initialDelayMs: 1000,
+      isRetryable: isRetryableHttpError,
+      ...metrics.breakerHooks('orders-management-order'),
+    });
+  }
 
   async placeOrder(order: CreateOrderDto): Promise<OrderResponseDto> {
     try {
