@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChaosModule } from '@app/chaos';
+import { MetricsModule } from '@app/metrics';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { DeliveriesModule } from './deliveries/deliveries.module.js';
@@ -27,6 +28,7 @@ import { InitialSchema1791462830391 } from './migrations/1791462830391-InitialSc
       }),
     }),
     ChaosModule,
+    MetricsModule,
     DeliveriesModule,
   ],
   controllers: [AppController],

@@ -22,7 +22,9 @@
       "@app/resilience": ["./libs/resilience/src/index.ts"],
       "@app/resilience/*": ["./libs/resilience/src/*"],
       "@app/chaos": ["./libs/chaos/src/index.ts"],
-      "@app/chaos/*": ["./libs/chaos/src/*"]
+      "@app/chaos/*": ["./libs/chaos/src/*"],
+      "@app/metrics": ["./libs/metrics/src/index.ts"],
+      "@app/metrics/*": ["./libs/metrics/src/*"]
     }
   }
 }
