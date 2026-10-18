@@ -1,95 +1,85 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER}']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - backend-net
-
-  warehouse:
-    build:
-      context: .
-      dockerfile: apps/warehouse/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      PORT: 3002
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - '3002:3002'
-    networks:
-      - backend-net
-
-  orders-management:
-    build:
-      context: .
-      dockerfile: apps/orders-management/Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      PORT: 3001
-    depends_on:
-      postgres:
-        condition: service_healthy
-      warehouse:
-        condition: service_started
-    ports:
-      - '3001:3001'
-    networks:
-      - backend-net
-      - edge-net
-
   terminal:
     build:
       context: .
       dockerfile: apps/terminal/Dockerfile
-    restart: unless-stopped
-    env_file: .env
     environment:
-      PORT: 3000
-    depends_on:
-      orders-management:
-        condition: service_started
+      PORT: ${TERMINAL_PORT}
+      TERMINAL_ID: ${TERMINAL_ID}
+      ORDERS_MANAGEMENT_URL: ${ORDERS_MANAGEMENT_URL}
+      MENU_CACHE_DB_PATH: ${MENU_CACHE_DB_PATH}
     ports:
-      - '3000:3000'
+      - "3000:3000"
     networks:
-      - edge-net
-
-  prometheus:
-    image: prom/prometheus:v3.5.0
-    restart: unless-stopped
-    volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    depends_on:
-      - terminal
       - orders-management
-      - warehouse
+  orders-management:
+    build:
+      context: .
+      dockerfile: apps/orders-management/Dockerfile
+    environment:
+      PORT: ${ORDERS_MANAGEMENT_PORT}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ORDERS_DB_NAME: ${ORDERS_DB_NAME}
+      KNOWN_TERMINAL_IDS: ${KNOWN_TERMINAL_IDS}
+      WAREHOUSE_URL: ${WAREHOUSE_URL}
     ports:
-      - '9090:9090'
-    # Attached to both networks only so it can scrape every service; the services
-    # themselves still share no network with each other beyond the original links.
+      - "127.0.0.1:3001:3001"
+    networks: [orders-management, warehouse, postgres]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
     networks:
-      - edge-net
-      - backend-net
-
+      - postgres
+  warehouse:
+    build:
+      context: .
+      dockerfile: apps/warehouse/Dockerfile
+    environment:
+      PORT: ${WAREHOUSE_PORT}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      WAREHOUSE_DB_NAME: ${WAREHOUSE_DB_NAME}
+      ORDERS_MANAGEMENT_URL: ${ORDERS_MANAGEMENT_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3002:3002"
+    networks: [warehouse, postgres]
+  prometheus:
+    image: prom/prometheus:v3.13.4
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks: [orders-management, warehouse]
 networks:
-  # terminal <-> orders-management only
-  edge-net:
-  # orders-management <-> warehouse <-> postgres; terminal is never attached here,
-  # so it has no network path to warehouse or the database, matching the diagrams.
-  backend-net:
+  orders-management:
+  warehouse:
+  postgres:
 
 volumes:
-  postgres-data:
-  prometheus-data:
+  postgres_data:
+  prometheus_data:
