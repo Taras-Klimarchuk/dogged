@@ -1,5 +1,7 @@
 import { BrokenCircuitError } from 'cockatiel';
+import { AxiosError } from 'axios';
 import {
+  classifyFailure,
   createRetryTimeoutBreakerPolicy,
   createRetryTimeoutPolicy,
 } from './index.js';
@@ -81,5 +83,48 @@ describe('resilience hooks', () => {
     const policy = createRetryTimeoutBreakerPolicy({ maxAttempts: 0 });
 
     await expect(policy.execute(() => Promise.resolve(1))).resolves.toBe(1);
+  });
+
+  it('classifies failures as timeout, network, app or client', async () => {
+    const networkError = new AxiosError('connect ECONNREFUSED', 'ECONNREFUSED');
+    const appError = new AxiosError('500', 'ERR_BAD_RESPONSE', undefined, undefined, {
+      status: 500,
+    } as never);
+    const clientError = new AxiosError('404', 'ERR_BAD_REQUEST', undefined, undefined, {
+      status: 404,
+    } as never);
+    const kinds: string[] = [];
+    const policy = createRetryTimeoutPolicy({
+      maxAttempts: 0,
+      timeoutMs: 5,
+      onFailure: (kind) => kinds.push(kind),
+    });
+
+    await expect(policy.execute(() => Promise.reject(networkError))).rejects.toThrow();
+    await expect(policy.execute(() => Promise.reject(appError))).rejects.toThrow();
+    await expect(policy.execute(() => Promise.reject(clientError))).rejects.toThrow();
+    await expect(
+      policy.execute(() => new Promise((resolve) => setTimeout(resolve, 50))),
+    ).rejects.toThrow();
+
+    expect(kinds).toEqual(['network', 'app', 'client', 'timeout']);
+    expect(classifyFailure(new Error('boom'))).toBe('app');
+  });
+
+  it('reports unhandled failures too, but not breaker rejections', async () => {
+    const onFailure = vi.fn();
+    const policy = createRetryTimeoutBreakerPolicy({
+      maxAttempts: 0,
+      consecutiveFailuresToOpen: 1,
+      isRetryable: (error) => (error as Error).message !== 'client',
+      onFailure,
+    });
+
+    await expect(policy.execute(() => Promise.reject(new Error('client')))).rejects.toThrow();
+    expect(onFailure).toHaveBeenCalledTimes(1);
+
+    await expect(policy.execute(fail)).rejects.toThrow('down');
+    await expect(policy.execute(fail)).rejects.toBeInstanceOf(BrokenCircuitError);
+    expect(onFailure).toHaveBeenCalledTimes(2);
   });
 });

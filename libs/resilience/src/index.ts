@@ -4,9 +4,12 @@ import {
   CircuitState,
   ConsecutiveBreaker,
   ExponentialBackoff,
+  TaskCancelledError,
   circuitBreaker,
   handleAll,
   handleWhen,
+  type Event,
+  type IFailureEvent,
   retry,
   timeout,
   TimeoutStrategy,
@@ -21,6 +24,17 @@ export function isRetryableHttpError(error: unknown): boolean {
     return error.response.status >= 500;
   }
   return true;
+}
+
+export type FailureKind = 'timeout' | 'network' | 'app' | 'client';
+
+export function classifyFailure(error: unknown): FailureKind {
+  if (error instanceof TaskCancelledError) return 'timeout';
+  if (isAxiosError(error)) {
+    if (!error.response) return 'network';
+    if (error.response.status < 500) return 'client';
+  }
+  return 'app';
 }
 
 export type BreakerState = 'closed' | 'half-open' | 'open' | 'isolated';
@@ -39,6 +53,8 @@ export interface RetryHooks {
   onRetry?: () => void;
   /** Called when the last attempt failed and no retries are left. */
   onGiveUp?: () => void;
+  /** Called for every failed attempt, including unhandled ones such as 4xx, classified by cause. */
+  onFailure?: (kind: FailureKind) => void;
 }
 
 export interface BreakerHooks extends RetryHooks {
@@ -46,6 +62,15 @@ export interface BreakerHooks extends RetryHooks {
   onBreakerStateChange?: (state: BreakerState) => void;
   /** Called when a call is rejected because the breaker is open, without reaching the dependency. */
   onReject?: () => void;
+}
+
+function reportFailures(
+  policy: { onFailure: Event<IFailureEvent> },
+  onFailure: (kind: FailureKind) => void,
+) {
+  policy.onFailure(({ reason }) => {
+    if ('error' in reason) onFailure(classifyFailure(reason.error));
+  });
 }
 
 export interface RetryTimeoutPolicyOptions extends RetryHooks {
@@ -68,6 +93,7 @@ export function createRetryTimeoutPolicy(
     isRetryable,
     onRetry,
     onGiveUp,
+    onFailure,
   } = options;
   const errorFilter = isRetryable ? handleWhen(isRetryable) : handleAll;
 
@@ -81,6 +107,7 @@ export function createRetryTimeoutPolicy(
   });
   if (onRetry) retryPolicy.onRetry(() => onRetry());
   if (onGiveUp) retryPolicy.onGiveUp(() => onGiveUp());
+  if (onFailure) reportFailures(retryPolicy, onFailure);
 
   return wrap(retryPolicy, timeoutPolicy);
 }
@@ -104,6 +131,7 @@ export function createRetryTimeoutBreakerPolicy(
     isRetryable,
     onRetry,
     onGiveUp,
+    onFailure,
     onBreakerStateChange,
     onReject,
   } = options;
@@ -129,6 +157,9 @@ export function createRetryTimeoutBreakerPolicy(
   });
   if (onRetry) retryPolicy.onRetry(() => onRetry());
   if (onGiveUp) retryPolicy.onGiveUp(() => onGiveUp());
+  // Reported from the breaker, not the retry policy: it sits inside the retry
+  // loop, so it sees each attempt once and never sees rejected calls.
+  if (onFailure) reportFailures(breakerPolicy, onFailure);
   if (onBreakerStateChange) {
     onBreakerStateChange(BREAKER_STATES[breakerPolicy.state]);
     breakerPolicy.onStateChange((state) =>

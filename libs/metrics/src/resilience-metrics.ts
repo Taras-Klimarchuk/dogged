@@ -23,6 +23,7 @@ export class ResilienceMetrics {
   private readonly giveUps: Counter<'policy'>;
   private readonly breakerState: Gauge<'policy'>;
   private readonly rejections: Counter<'policy'>;
+  private readonly failures: Counter<'policy' | 'kind'>;
 
   constructor(registry: Registry) {
     this.retries = new Counter({
@@ -49,12 +50,19 @@ export class ResilienceMetrics {
       labelNames: ['policy'],
       registers: [registry],
     });
+    this.failures = new Counter({
+      name: 'resilience_failures_total',
+      help: 'Failed attempts against the dependency, by cause (timeout, network, app or client)',
+      labelNames: ['policy', 'kind'],
+      registers: [registry],
+    });
   }
 
   retryHooks(policy: string): RetryHooks {
     return {
       onRetry: () => this.retries.inc({ policy }),
       onGiveUp: () => this.giveUps.inc({ policy }),
+      onFailure: (kind) => this.failures.inc({ policy, kind }),
     };
   }
 

@@ -51,4 +51,16 @@ describe('ResilienceMetrics', () => {
       'resilience_retries_total{policy="orders"} 1',
     );
   });
+
+  it('counts failures per policy and kind', async () => {
+    const hooks = metrics.breakerHooks('orders');
+
+    hooks.onFailure?.('timeout');
+    hooks.onFailure?.('timeout');
+    hooks.onFailure?.('network');
+
+    const text = await registry.metrics();
+    expect(text).toContain('resilience_failures_total{policy="orders",kind="timeout"} 2');
+    expect(text).toContain('resilience_failures_total{policy="orders",kind="network"} 1');
+  });
 });
