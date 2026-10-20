@@ -76,6 +76,25 @@ services:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./docker/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
     networks: [orders-management, warehouse, monitoring]
+  loki:
+    image: grafana/loki:3.5.12
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - loki_data:/loki
+      - ./docker/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+    networks:
+      - monitoring
+  alloy:
+    image: grafana/alloy:v1.10.0
+    command: run --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    volumes:
+      - alloy_data:/var/lib/alloy/data
+      - ./docker/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - monitoring
   grafana:
     image: grafana/grafana:13.0.11-slim
     ports:
@@ -107,6 +126,8 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+  loki_data:
+  alloy_data:
 
 secrets:
   telegram_bot_token:
