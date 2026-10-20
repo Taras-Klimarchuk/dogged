@@ -1,3 +1,4 @@
+import { BrokenCircuitError } from 'cockatiel';
 import {
   createRetryTimeoutBreakerPolicy,
   createRetryTimeoutPolicy,
@@ -54,6 +55,26 @@ describe('resilience hooks', () => {
     await policy.execute(() => Promise.resolve('ok'));
 
     expect(states).toEqual(['closed', 'open', 'half-open', 'closed']);
+  });
+
+  it('reports calls rejected by an open breaker, without retrying them', async () => {
+    const onRetry = vi.fn();
+    const onReject = vi.fn();
+    const policy = createRetryTimeoutBreakerPolicy({
+      maxAttempts: 0,
+      consecutiveFailuresToOpen: 1,
+      onRetry,
+      onReject,
+    });
+
+    await expect(policy.execute(fail)).rejects.toThrow('down');
+    expect(onReject).not.toHaveBeenCalled();
+
+    await expect(policy.execute(fail)).rejects.toBeInstanceOf(BrokenCircuitError);
+    await expect(policy.execute(fail)).rejects.toBeInstanceOf(BrokenCircuitError);
+
+    expect(onReject).toHaveBeenCalledTimes(2);
+    expect(onRetry).not.toHaveBeenCalled();
   });
 
   it('works without any hooks', async () => {

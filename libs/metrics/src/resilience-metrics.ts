@@ -22,6 +22,7 @@ export class ResilienceMetrics {
   private readonly retries: Counter<'policy'>;
   private readonly giveUps: Counter<'policy'>;
   private readonly breakerState: Gauge<'policy'>;
+  private readonly rejections: Counter<'policy'>;
 
   constructor(registry: Registry) {
     this.retries = new Counter({
@@ -42,6 +43,12 @@ export class ResilienceMetrics {
       labelNames: ['policy'],
       registers: [registry],
     });
+    this.rejections = new Counter({
+      name: 'circuit_breaker_rejections_total',
+      help: 'Calls rejected without reaching the dependency because the breaker was open',
+      labelNames: ['policy'],
+      registers: [registry],
+    });
   }
 
   retryHooks(policy: string): RetryHooks {
@@ -56,6 +63,7 @@ export class ResilienceMetrics {
       ...this.retryHooks(policy),
       onBreakerStateChange: (state) =>
         this.breakerState.set({ policy }, STATE_VALUES[state]),
+      onReject: () => this.rejections.inc({ policy }),
     };
   }
 }

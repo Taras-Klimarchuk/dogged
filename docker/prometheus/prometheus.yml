@@ -2,6 +2,16 @@ global:
   # how often Prometheus pulls GET /metrics from every target
   scrape_interval: 15s
 
+# Point Prometheus to the Alertmanager container
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+
+rule_files:
+  - ./alert_rules.yml
+
 # Targets are addressed by docker compose service name + the container port
 # (not the host-published one): Prometheus reaches them over the docker networks.
 scrape_configs:

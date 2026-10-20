@@ -44,6 +44,8 @@ export interface RetryHooks {
 export interface BreakerHooks extends RetryHooks {
   /** Called with the initial state on creation and on every state change. */
   onBreakerStateChange?: (state: BreakerState) => void;
+  /** Called when a call is rejected because the breaker is open, without reaching the dependency. */
+  onReject?: () => void;
 }
 
 export interface RetryTimeoutPolicyOptions extends RetryHooks {
@@ -103,6 +105,7 @@ export function createRetryTimeoutBreakerPolicy(
     onRetry,
     onGiveUp,
     onBreakerStateChange,
+    onReject,
   } = options;
   const errorFilter = isRetryable ? handleWhen(isRetryable) : handleAll;
   // An open breaker rejects instantly; retrying that would only sleep through
@@ -134,5 +137,19 @@ export function createRetryTimeoutBreakerPolicy(
   }
 
   // retry (outer) -> circuit breaker -> timeout (inner), per attempt.
-  return wrap(retryPolicy, breakerPolicy, timeoutPolicy);
+  const policy = wrap(retryPolicy, breakerPolicy, timeoutPolicy);
+
+  // cockatiel has no "call rejected" event, and the retry filter above lets
+  // BrokenCircuitError pass straight through, so it can only be seen here.
+  const execute: typeof policy.execute = async (fn) => {
+    try {
+      return await policy.execute(fn);
+    } catch (e) {
+      if (e instanceof BrokenCircuitError) {
+        onReject?.();
+      }
+      throw e;
+    }
+  };
+  return { execute };
 }
